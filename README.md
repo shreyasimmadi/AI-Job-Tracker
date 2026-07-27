@@ -44,31 +44,23 @@ Contributors: Shreyas Immadi
 
 ## 3. Install dependencies:
 
-      '''bash
       pip install -r requirements.txt
-      '''
 
 ## 4. Place your GCP OAuth credentials inside the `config/` directory:
 
-      '''
       config/credentials.json
-      '''
 
 ## 5. Add your environment variables. Create a `.env` file in the project root:
 
-      '''
       GEMINI_API_KEY=your_gemini_api_key
       GOOGLE_SHEET_ID=your_google_sheet_id
       CHECK_INTERVAL_MINUTES=15
-      '''
 
 ## Running the app
 
 Start the development server with Uvicorn:
 
-      '''bash
       uvicorn main:app --reload
-      '''
 
 On initial launch, a browser window will open requesting OAuth consent for Gmail and Sheets access. Upon approval, authentication tokens are cached to `config/token.json`.
 
@@ -82,7 +74,6 @@ The background scheduler will run an immediate scan on startup, then repeat ever
 
 ## Project structure
 
-    '''
     config/
       credentials.json     # GCP OAuth client configuration (Git-ignored)
       token.json           # Cached OAuth user tokens (Git-ignored)
@@ -96,7 +87,6 @@ The background scheduler will run an immediate scan on startup, then repeat ever
     .gitignore             # Excludes keys, tokens, environments, and caches
     main.py                # FastAPI app instance, lifespans & APScheduler background loop
     requirements.txt       # Python package dependencies
-    '''
 
 ## Scripts
 
