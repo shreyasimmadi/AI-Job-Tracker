@@ -33,46 +33,46 @@ Contributors: Shreyas Immadi
 
 1. Clone the repo and navigate to the project directory:
 
-  '''bash
-   git clone https://github.com/your-username/ai-job-tracker-backend.git
-   cd ai-job-tracker-backend
-   '''
+    '''bash
+    git clone https://github.com/your-username/ai-job-tracker-backend.git
+    cd ai-job-tracker-backend
+    '''
 
 2. Create and activate a Python virtual environment:
 
-  '''bash
-   python3 -m venv venv
-   source venv/bin/activate   
-   On Windows: venv\Scripts\activate
-   '''
+    '''bash
+    python3 -m venv venv
+    source venv/bin/activate   
+    On Windows: venv\Scripts\activate
+    '''
 
 3. Install dependencies:
 
-  '''bash
-   pip install -r requirements.txt
-   '''
+    '''bash
+    pip install -r requirements.txt
+    '''
 
 4. Place your GCP OAuth credentials inside the `config/` directory:
 
-  '''bash
-   config/credentials.json
-   '''
+    '''
+    config/credentials.json
+    '''
 
 5. Add your environment variables. Create a `.env` file in the project root:
 
-  '''bash
-   GEMINI_API_KEY=your_gemini_api_key
-   GOOGLE_SHEET_ID=your_google_sheet_id
-   CHECK_INTERVAL_MINUTES=15
-   '''
+    '''
+    GEMINI_API_KEY=your_gemini_api_key
+    GOOGLE_SHEET_ID=your_google_sheet_id
+    CHECK_INTERVAL_MINUTES=15
+    '''
 
 ## Running the app
 
 Start the development server with Uvicorn:
 
-  '''bash
-  uvicorn main:app --reload
-  '''
+    '''bash
+    uvicorn main:app --reload
+    '''
 
 On initial launch, a browser window will open requesting OAuth consent for Gmail and Sheets access. Upon approval, authentication tokens are cached to `config/token.json`.
 
@@ -86,21 +86,21 @@ The background scheduler will run an immediate scan on startup, then repeat ever
 
 ## Project structure
 
-  '''bash
-  config/
-    credentials.json     # GCP OAuth client configuration (Git-ignored)
-    token.json           # Cached OAuth user tokens (Git-ignored)
-  services/
-    gemini_service.py    # Gemini schema definition & structured extraction
-    gmail_service.py     # Gmail API authentication, email fetching & MIME decoding
-    sheets_service.py    # Google Sheets API client & row updating logic
-  utilities/
-    text_cleaner.py      # HTML stripping & payload cleaning helpers
-  .env.example           # Environment template file
-  .gitignore             # Excludes keys, tokens, environments, and caches
-  main.py                # FastAPI app instance, lifespans & APScheduler background loop
-  requirements.txt       # Python package dependencies
-  '''
+    '''
+    config/
+      credentials.json     # GCP OAuth client configuration (Git-ignored)
+      token.json           # Cached OAuth user tokens (Git-ignored)
+    services/
+      gemini_service.py    # Gemini schema definition & structured extraction
+      gmail_service.py     # Gmail API authentication, email fetching & MIME decoding
+      sheets_service.py    # Google Sheets API client & row updating logic
+    utilities/
+      text_cleaner.py      # HTML stripping & payload cleaning helpers
+    .env.example           # Environment template file
+    .gitignore             # Excludes keys, tokens, environments, and caches
+    main.py                # FastAPI app instance, lifespans & APScheduler background loop
+    requirements.txt       # Python package dependencies
+    '''
 
 ## Scripts
 
