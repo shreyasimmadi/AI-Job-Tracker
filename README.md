@@ -31,14 +31,14 @@ Contributors: Shreyas Immadi
 
 ## Setup
 
-1. Clone the repo and navigate to the project directory:
+## 1. Clone the repo and navigate to the project directory:
 
     '''bash
     git clone https://github.com/your-username/ai-job-tracker-backend.git
     cd ai-job-tracker-backend
     '''
 
-2. Create and activate a Python virtual environment:
+## 2. Create and activate a Python virtual environment:
 
       '''bash
       python3 -m venv venv
@@ -46,19 +46,19 @@ Contributors: Shreyas Immadi
       On Windows: venv\Scripts\activate
       '''
 
-3. Install dependencies:
+## 3. Install dependencies:
 
       '''bash
       pip install -r requirements.txt
       '''
 
-4. Place your GCP OAuth credentials inside the `config/` directory:
+## 4. Place your GCP OAuth credentials inside the `config/` directory:
 
       '''
       config/credentials.json
       '''
 
-5. Add your environment variables. Create a `.env` file in the project root:
+## 5. Add your environment variables. Create a `.env` file in the project root:
 
       '''
       GEMINI_API_KEY=your_gemini_api_key
