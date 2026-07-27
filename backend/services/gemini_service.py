@@ -1,0 +1,119 @@
+import os
+from typing import Optional, Literal
+from pydantic import BaseModel, Field
+from google import genai
+from google.genai import types
+from dotenv import load_dotenv
+
+# Load environment variables from backend/.env
+load_dotenv()
+
+# Initialize the official Google GenAI Client
+# Automatically detects GEMINI_API_KEY from the environment
+client = genai.Client()
+
+# Define the exact blueprint matching your Google Sheet columns
+class JobApplicationData(BaseModel):
+    is_job_application: bool = Field(
+        description="Set to TRUE if this email is a legitimate job application confirmation, interview invite, assessment, rejection, status update, or job offer. Set to FALSE for newsletters, marketing, promo emails, or non-job updates."
+    )
+    company_name: str = Field(
+        default="", 
+        description="Name of the company or organization (e.g. BalanX, Google, Robinhood). Extract from text, email sender, or signatures."
+    )
+    job_link: Optional[str] = Field(
+        default="", 
+        description="URL to the job posting if explicitly provided in the email."
+    )
+    job_title: str = Field(
+        default="Internship", 
+        description="Title of the role or position (e.g., 'Software Engineering Intern', 'Data Analyst')."
+    )
+    date_applied: str = Field(
+        default="", 
+        description="Date the application was submitted or the email date formatted strictly as YYYY-MM-DD. Always convert dates like 'July 26' or 'today' into YYYY-MM-DD."
+    )
+    deadline: Optional[str] = Field(
+        default="", 
+        description="Application response, task, or assessment deadline if explicitly mentioned in strict YYYY-MM-DD format. Leave empty string if no deadline is mentioned."
+    )
+    
+    # Matches Google Sheet 'Type of Job' dropdown choices
+    type_of_job: Literal["Full-Time", "Part-Time", "Freelance", "Contract", "Internship", "Other"] = Field(
+        default="Internship", 
+        description="Employment type (e.g. Internship, Full-Time)."
+    )
+    
+    salary: Optional[str] = Field(
+        default="", 
+        description="Salary, hourly rate, or compensation details if mentioned."
+    )
+    contact_info: Optional[str] = Field(
+        default="", 
+        description="Recruiter or contact person's email address or LinkedIn URL if available."
+    )
+    location: Optional[str] = Field(
+        default="", 
+        description="Job location (e.g., 'Remote', 'Hybrid', or 'City, State')."
+    )
+    
+    # MUST MATCH exact Google Sheet dropdown values:
+    application_status: Literal[
+        "Not Started", "Applied", "Interview Scheduled", 
+        "Interviewed", "Accepted", "Rejected", "No Reply", "Offer Received"
+    ] = Field(
+        default="Applied",
+        description="Current application status derived from the email context."
+    )
+    
+    interview_date: Optional[str] = Field(
+        default="", 
+        description="Scheduled interview date/time in YYYY-MM-DD format if mentioned."
+    )
+    resume_version: Optional[str] = Field(
+        default="", 
+        description="Specific resume version or track if mentioned in email."
+    )
+    notes: Optional[str] = Field(
+        default="", 
+        description="Brief 1-sentence summary of key updates or action items."
+    )
+
+
+def parse_job_email(clean_email_text: str) -> JobApplicationData:
+    """
+    Parses clean email body text with Gemini and extracts structured job application data.
+    """
+    prompt = f"""
+    Analyze the following email body regarding a candidate's job application, interview, or offer update.
+
+    CLASSIFICATION RULES:
+    1. Set `is_job_application` to TRUE if the email is a job application submission confirmation, interview invitation, assessment link, decision update, rejection, OR A JOB OFFER.
+    2. Set `is_job_application` to FALSE only for marketing, newsletters, general account signups, or non-job emails.
+
+    DATE FORMATTING RULES:
+    - `date_applied` and `deadline` MUST be formatted as YYYY-MM-DD (e.g., 2026-07-26).
+    - Do not output relative strings like "Today" or text dates like "July 26th". Always format as numerical YYYY-MM-DD.
+
+    STATUS MAPPING RULES (Map strictly to these exact Google Sheet dropdown string values):
+    - If the email contains a job offer, official offer letter, or congratulations on an offer -> "Offer Received"
+    - If the email confirms you formally accepted the job -> "Accepted"
+    - If the email invites to an interview, screen, or assessment -> "Interview Scheduled"
+    - If the email is a rejection or non-selection notice -> "Rejected"
+    - If the email is an initial application submission confirmation -> "Applied"
+    - Otherwise default to -> "Applied"
+
+    Email Content:
+    {clean_email_text}
+    """
+
+    response = client.models.generate_content(
+        model='gemini-3.5-flash-lite',
+        contents=prompt,
+        config=types.GenerateContentConfig(
+            response_mime_type="application/json",
+            response_schema=JobApplicationData,
+        ),
+    )
+
+    return JobApplicationData.model_validate_json(response.text)
