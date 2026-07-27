@@ -33,18 +33,14 @@ Contributors: Shreyas Immadi
 
 ## 1. Clone the repo and navigate to the project directory:
 
-    '''bash
     git clone https://github.com/your-username/ai-job-tracker-backend.git
     cd ai-job-tracker-backend
-    '''
 
 ## 2. Create and activate a Python virtual environment:
 
-      '''bash
       python3 -m venv venv
       source venv/bin/activate   
       On Windows: venv\Scripts\activate
-      '''
 
 ## 3. Install dependencies:
 
