@@ -14,7 +14,7 @@ COLUMNS = {
     "JOB_LINK": "B",
     "TITLE": "C",
     "DATE_APPLIED": "D",
-    "DEADLINE": "E",
+    "LATEST_EMAIL_UPDATE": "E",
     "JOB_TYPE": "F",
     "SALARY": "G",
     "CONTACT": "H",
@@ -27,13 +27,17 @@ COLUMNS = {
 VALID_STATUSES = {
     "not started": "Not Started",
     "applied": "Applied",
+    "oa": "OA",
     "interview scheduled": "Interview Scheduled",
     "interviewed": "Interviewed",
     "accepted": "Accepted",
     "rejected": "Rejected",
     "no reply": "No Reply",
     "offer": "Offer Received",
-    "offer received": "Offer Received"
+    "offer received": "Offer Received",
+    "online assessment": "OA",
+    "technical assessment": "OA",
+    "coding assessment": "OA",
 }
 
 
@@ -153,23 +157,33 @@ def update_or_append_job(spreadsheet_id: str, job_data: dict, sheet_name: str = 
             body={"values": [[status_value]]}
         ).execute()
 
-        if job_data.get("date_applied"):
-            date_range = f"'{sheet_name}'!{COLUMNS['DATE_APPLIED']}{target_row_number}"
+        # NOTE: DATE_APPLIED is intentionally never touched here — it's set once,
+        # at row creation (see append branch below), and preserved after that.
+        # email_date reflects "the date THIS email arrived" and always goes into
+        # LATEST_EMAIL_UPDATE instead, so a later rejection/interview email can't
+        # silently overwrite the original application date.
+        if job_data.get("email_date"):
+            update_range = f"'{sheet_name}'!{COLUMNS['LATEST_EMAIL_UPDATE']}{target_row_number}"
             service.spreadsheets().values().update(
                 spreadsheetId=spreadsheet_id,
-                range=date_range,
+                range=update_range,
                 valueInputOption="USER_ENTERED",
-                body={"values": [[job_data.get("date_applied")]]}
+                body={"values": [[job_data.get("email_date")]]}
             ).execute()
     else:
         print(f"[Sheets Service] ➕ No match found. Appending new application for {raw_company}...")
         
+        # This IS a genuine first sighting of this company/title, so email_date
+        # (the actual Gmail timestamp) is a reliable stand-in for "date applied" —
+        # more reliable than trusting Gemini's own extracted date_applied field.
+        first_seen_date = job_data.get("email_date", "") or job_data.get("date_applied", "")
+
         new_row = [
             raw_company,                                 # Column A: Company Name
             job_data.get("job_link", ""),                # Column B: Job Link
             raw_title,                                   # Column C: Job Title
-            job_data.get("date_applied", ""),            # Column D: Date Applied (YYYY-MM-DD)
-            job_data.get("deadline", ""),                # Column E: Deadline
+            first_seen_date,                             # Column D: Date Applied (YYYY-MM-DD)
+            first_seen_date,                             # Column E: Latest Email Update
             job_data.get("type_of_job", "Internship"),   # Column F: Type of Job
             job_data.get("salary", ""),                  # Column G: Salary
             job_data.get("contact_info", ""),            # Column H: Contact Info

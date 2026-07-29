@@ -33,10 +33,6 @@ class JobApplicationData(BaseModel):
         default="", 
         description="Date the application was submitted or the email date formatted strictly as YYYY-MM-DD. Always convert dates like 'July 26' or 'today' into YYYY-MM-DD."
     )
-    deadline: Optional[str] = Field(
-        default="", 
-        description="Application response, task, or assessment deadline if explicitly mentioned in strict YYYY-MM-DD format. Leave empty string if no deadline is mentioned."
-    )
     
     # Matches Google Sheet 'Type of Job' dropdown choices
     type_of_job: Literal["Full-Time", "Part-Time", "Freelance", "Contract", "Internship", "Other"] = Field(
@@ -59,24 +55,11 @@ class JobApplicationData(BaseModel):
     
     # MUST MATCH exact Google Sheet dropdown values:
     application_status: Literal[
-        "Not Started", "Applied", "Interview Scheduled", 
+        "Not Started", "Applied", "OA", "Interview Scheduled", 
         "Interviewed", "Accepted", "Rejected", "No Reply", "Offer Received"
     ] = Field(
         default="Applied",
         description="Current application status derived from the email context."
-    )
-    
-    interview_date: Optional[str] = Field(
-        default="", 
-        description="Scheduled interview date/time in YYYY-MM-DD format if mentioned."
-    )
-    resume_version: Optional[str] = Field(
-        default="", 
-        description="Specific resume version or track if mentioned in email."
-    )
-    notes: Optional[str] = Field(
-        default="", 
-        description="Brief 1-sentence summary of key updates or action items."
     )
 
 
@@ -92,13 +75,14 @@ def parse_job_email(clean_email_text: str) -> JobApplicationData:
     2. Set `is_job_application` to FALSE only for marketing, newsletters, general account signups, or non-job emails.
 
     DATE FORMATTING RULES:
-    - `date_applied` and `deadline` MUST be formatted as YYYY-MM-DD (e.g., 2026-07-26).
+    - `date_applied` MUST be formatted as YYYY-MM-DD (e.g., 2026-07-26).
     - Do not output relative strings like "Today" or text dates like "July 26th". Always format as numerical YYYY-MM-DD.
 
     STATUS MAPPING RULES (Map strictly to these exact Google Sheet dropdown string values):
     - If the email contains a job offer, official offer letter, or congratulations on an offer -> "Offer Received"
     - If the email confirms you formally accepted the job -> "Accepted"
-    - If the email invites to an interview, screen, or assessment -> "Interview Scheduled"
+    - If the email invites you to complete an online assessment, technical assessment, coding challenge, or coding test (NOT a live interview) -> "OA"
+    - If the email invites to a live interview, phone screen, or on-site/virtual interview -> "Interview Scheduled"
     - If the email is a rejection or non-selection notice -> "Rejected"
     - If the email is an initial application submission confirmation -> "Applied"
     - Otherwise default to -> "Applied"

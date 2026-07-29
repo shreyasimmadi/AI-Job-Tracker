@@ -1,17 +1,48 @@
 import base64
 from datetime import datetime
-from typing import List, Dict, Set
+from typing import List, Dict, Optional
 
 from services.auth import get_google_service
 from utilities.text_cleaner import clean_html
 
-# In-memory O(1) Hash Set to track processed email message IDs during runtime
-PROCESSED_MESSAGE_IDS: Set[str] = set()
+# Cached label ID for "Job-Tracker-Done" so we only look it up once per process,
+# not on every single pipeline run.
+_DONE_LABEL_ID_CACHE: Optional[str] = None
+
+DONE_LABEL_NAME = "Job Tracker Done"
 
 
 def get_gmail_service():
     """Initializes and returns the Gmail API service client using shared OAuth auth."""
     return get_google_service('gmail', 'v1')
+
+
+def get_done_label_id(service=None) -> str:
+    """
+    Looks up the Gmail label ID for DONE_LABEL_NAME (e.g. 'Job-Tracker-Done').
+    Gmail's API requires a label ID (like 'Label_123') to apply/remove labels,
+    not the display name, so this resolves the name -> ID once and caches it.
+
+    Raises a clear error if the label doesn't exist yet, since it must be
+    created manually in Gmail first (Settings -> Labels -> Create new label).
+    """
+    global _DONE_LABEL_ID_CACHE
+    if _DONE_LABEL_ID_CACHE:
+        return _DONE_LABEL_ID_CACHE
+
+    service = service or get_gmail_service()
+    labels_response = service.users().labels().list(userId='me').execute()
+    labels = labels_response.get('labels', [])
+
+    for label in labels:
+        if label.get('name') == DONE_LABEL_NAME:
+            _DONE_LABEL_ID_CACHE = label['id']
+            return _DONE_LABEL_ID_CACHE
+
+    raise ValueError(
+        f"Gmail label '{DONE_LABEL_NAME}' not found. "
+        f"Create it manually in Gmail (Settings -> Labels -> Create new label) first."
+    )
 
 
 def decode_payload_data(data: str) -> str:
@@ -66,14 +97,20 @@ def extract_email_body(message: dict) -> str:
 
 def fetch_unread_job_emails(max_results: int = 10) -> List[Dict[str, str]]:
     """
-    Queries emails matching 'label:Job-Tracker newer_than:1d'.
-    Uses an in-memory hash set to skip duplicate message IDs during runtime.
+    Queries emails matching 'label:Job-Tracker -label:Job-Tracker-Done newer_than:7d'.
+
+    Dedup is handled entirely server-side by Gmail via the Job-Tracker-Done label
+    (applied by mark_email_as_processed after a successful pipeline run) —
+    this survives process restarts and is unaffected by you reading emails
+    yourself, unlike relying on the UNREAD flag or an in-memory set.
     """
     service = get_gmail_service()
-    
-    # Query strictly filters by Job-Tracker label for emails received within the past day
-    query = 'label:Job-Tracker newer_than:1d'
-    
+
+    # newer_than:7d is just a generous safety bound so the query doesn't scan
+    # the entire inbox history -- the Job-Tracker-Done label exclusion is what
+    # actually prevents reprocessing, not this time window.
+    query = 'label:Job-Tracker -label:Job-Tracker-Done newer_than:7d'
+
     results = service.users().messages().list(
         userId='me', 
         q=query, 
@@ -85,11 +122,6 @@ def fetch_unread_job_emails(max_results: int = 10) -> List[Dict[str, str]]:
 
     for msg in messages:
         msg_id = msg['id']
-        
-        # O(1) Runtime Cache Check: Skip if already processed in current server session
-        if msg_id in PROCESSED_MESSAGE_IDS:
-            print(f"[O(1) Hash Set Hit] Message {msg_id} already processed. Skipping.")
-            continue
 
         # Fetch full message payload
         message = service.users().messages().get(
@@ -116,20 +148,25 @@ def fetch_unread_job_emails(max_results: int = 10) -> List[Dict[str, str]]:
             "raw_body": body,
             "email_date": email_date
         })
-        
-        # Track ID in runtime hash set
-        PROCESSED_MESSAGE_IDS.add(msg_id)
 
     return email_data
 
 
-def mark_email_as_read(message_id: str):
-    """Removes the UNREAD label from processed emails."""
+def mark_email_as_processed(message_id: str):
+    """
+    Applies the Job-Tracker-Done label to a message, marking it as handled.
+    This is Gmail-side, permanent state -- call this ONLY after the email has
+    been fully and successfully processed (i.e. after update_or_append_job
+    succeeds), so a mid-pipeline failure leaves the email unlabeled and
+    eligible for retry on the next run instead of being silently skipped.
+    """
     service = get_gmail_service()
+    done_label_id = get_done_label_id(service)
+
     service.users().messages().batchModify(
         userId='me',
         body={
             'ids': [message_id],
-            'removeLabelIds': ['UNREAD']
+            'addLabelIds': [done_label_id]
         }
     ).execute()

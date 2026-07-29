@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI
 from apscheduler.schedulers.background import BackgroundScheduler
 
-from services.gmail_service import fetch_unread_job_emails
+from services.gmail_service import fetch_unread_job_emails, mark_email_as_processed
 from utilities.text_cleaner import clean_html
 from services.gemini_service import parse_job_email
 from services.sheets_service import update_or_append_job
@@ -72,14 +72,26 @@ def run_pipeline() -> dict:
             if extracted_job and extracted_job.is_job_application and extracted_job.company_name:
                 job_dict = extracted_job.model_dump()
                 
-                # Enforce the internal Gmail timestamp as ground truth for application date
-                job_dict["date_applied"] = email_date
+                # Ground truth: the date THIS email arrived (not necessarily the application date).
+                # sheets_service decides whether this becomes DATE_APPLIED (new row)
+                # or LATEST_EMAIL_UPDATE (existing row) — see update_or_append_job.
+                job_dict["email_date"] = email_date
 
                 print(f"[Pipeline] 📊 Updating Google Sheet for {extracted_job.company_name} - {extracted_job.job_title}...")
                 update_or_append_job(GOOGLE_SHEET_ID, job_dict)
                 processed_count += 1
+
+                # Only label as done AFTER the sheet update succeeds. If update_or_append_job
+                # had thrown above, we'd never reach this line, so the email stays unlabeled
+                # and gets retried on the next scheduled run instead of being silently lost.
+                mark_email_as_processed(msg_id)
             else:
                 print(f"[Pipeline] ⏭️ Skipped non-job email or missing company details.")
+
+                # Still label it done -- otherwise a newsletter/marketing email that Gemini
+                # correctly classified as "not a job email" would match the query forever
+                # and get re-sent to Gemini on every single run.
+                mark_email_as_processed(msg_id)
 
             # Short delay between API processing steps
             time.sleep(2)
