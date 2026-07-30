@@ -99,7 +99,7 @@ def build_job_hashmap(rows: list) -> tuple[Dict[str, int], Dict[str, List[int]]]
     return composite_map, company_map
 
 
-def update_or_append_job(spreadsheet_id: str, job_data: dict, sheet_name: str = "Sheet1"):
+def update_or_append_job(spreadsheet_id: str, job_data: dict, sheet_name: str = "Main"):
     service = get_sheets_service()
     
     # 1. Fetch current rows from sheet
