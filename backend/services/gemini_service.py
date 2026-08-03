@@ -23,7 +23,8 @@ class JobApplicationData(BaseModel):
     )
     company_name: str = Field(
         default="", 
-        description="Name of the company or organization (e.g. BalanX, Google, Robinhood). Extract from text, email sender, or signatures."
+        description="The ACTUAL hiring employer/company (e.g. 'JPMorgan', 'JPMorganChase', 'Capital One'). "
+            "NEVER use third-party testing platform names like 'HackerRank', 'CodeSignal', or 'HireVue'."
     )
     job_link: Optional[str] = Field(
         default="", 
@@ -31,7 +32,10 @@ class JobApplicationData(BaseModel):
     )
     job_title: str = Field(
         default="Internship", 
-        description="Title of the role or position (e.g., 'Software Engineering Intern', 'Data Analyst')."
+        description="The specific job or program title. For assessment invites with generic titles "
+            "(e.g., 'NAMR Software Engineer Program - Campus Hiring - 2027'), shorten or extract "
+            "the core program name (e.g., 'Software Engineer Program' or 'Summer Internship') "
+            "so fuzzy matching can match existing applications."
     )
     date_applied: str = Field(
         default="", 
@@ -72,38 +76,43 @@ def parse_job_email(clean_email_text: str) -> JobApplicationData:
     Parses clean email body text with Gemini and extracts structured job application data.
     """
     prompt = f"""
-    Analyze the following email body regarding a candidate's job application, interview, or offer update.
+        Analyze the following email body regarding a candidate's job application, interview, or offer update.
 
-    CLASSIFICATION RULES:
-    1. Set `is_job_application` to TRUE if the email is a job application submission confirmation, interview invitation, assessment link, decision update, rejection, OR A JOB OFFER.
-    2. Set `is_job_application` to TRUE for ANY email from companies like Capital One, Google, etc. containing assessment invitations, Virtual Job Tryout (VJT) links, CodeSignal, or HackerRank assessments—even if 90% of the text is instructional/FAQ boilerplate.
-    3. Set `is_job_application` to FALSE ONLY for purely marketing emails, job alerts/recommendations, weekly newsletters, general account creations, or password resets.
-    4. IMPORTANT: Many assessment-invite emails open with a generic phrase like "Thank you for your interest in [Company]" and then spend most of their length on instructional/FAQ-style content (platform requirements, proctoring rules, browser compatibility, backup network tips, "learn more" links) rather than personalized language. Do NOT classify these as FALSE just because the bulk of the email reads like generic instructions -- if the underlying purpose is inviting the candidate to complete a hiring assessment or next step, it is TRUE regardless of how much boilerplate surrounds it.
-    5. Recognize common third-party hiring assessment platforms as strong signals of a real job application email, even if the email itself never uses the words "job" or "application": CodeSignal, HackerRank, Virtual Job Tryout, HireVue, Pymetrics, Karat, Codility, and similar coding/assessment platforms.
+        CLASSIFICATION RULES:
+        1. Set `is_job_application` to TRUE if the email is a job application submission confirmation, interview invitation, assessment link, decision update, rejection, OR A JOB OFFER.
+        2. Set `is_job_application` to TRUE for ANY email from companies like Capital One, JPMorgan, Google, etc. containing assessment invitations, Virtual Job Tryout (VJT) links, CodeSignal, or HackerRank assessments—even if 90% of the text is instructional/FAQ boilerplate or contains raw template tags.
+        3. Set `is_job_application` to FALSE ONLY for purely marketing emails, job alerts/recommendations, weekly newsletters, general account creations, or password resets.
+        4. IMPORTANT: Ignore any raw HTML, CSS, or Ruby/ERB template tags (e.g. `<% is_all_params_exists = ... %>`) that appear at the beginning or end of the text payload. Focus strictly on human-readable text.
+        5. Recognize common third-party hiring assessment platforms as strong signals of a real job application email, even if the email itself never uses the words "job" or "application": CodeSignal, HackerRank, Virtual Job Tryout, HireVue, Pymetrics, Karat, Codility, and similar coding/assessment platforms.
 
-    EXTRACTION BOUNDARY RULE (critical -- read carefully):
-    The platforms named above (CodeSignal, HackerRank, Virtual Job Tryout, HireVue, Pymetrics, Karat, Codility, etc.) are THIRD-PARTY TESTING VENDORS used to administer an assessment. They are NEVER the hiring company. Regardless of how prominently a testing platform's name appears in the email:
-    - `company_name` must always be the actual employer/organization the candidate applied to (e.g. "Capital One", "Google") -- NEVER a testing vendor's name, even if the vendor name is mentioned far more often in the email than the employer's name.
-    - `contact_info` must never be a testing vendor's generic support address (e.g. anything ending in @hackerrank.com, @codesignal.com, @myworkday.com support domains, etc.). If no genuine recruiter/company contact is present in the email, leave `contact_info` blank rather than substituting the vendor's support email.
-    - The employer's name is typically mentioned early in the email (often in the greeting or first sentence, e.g. "Thank you for your interest in ... at Capital One!") -- prioritize that over any vendor name mentioned later in the email body.
-    - Ignore generic legal/compliance boilerplate (e.g. AI-usage policies, "termination of employment" warnings, confidentiality notices) when determining `type_of_job`. These are standard disclaimers unrelated to the specific role. Base `type_of_job` only on explicit role-description wording (e.g. "Internship", "Intern", "Summer Analyst", "Full-Time Analyst").
+        EXTRACTION BOUNDARY & TITLE NORMALIZATION RULES (critical -- read carefully):
+        1. EMPLOYER vs VENDOR:
+        - CodeSignal, HackerRank, Virtual Job Tryout, HireVue, etc. are THIRD-PARTY TESTING VENDORS. They are NEVER the hiring company.
+        - `company_name` must ALWAYS be the actual employer/organization hiring the candidate (e.g., "JPMorgan", "JPMorganChase", "Capital One", "Google") -- NEVER "HackerRank" or "CodeSignal".
+        - Determine `company_name` by looking at the email subject line, header, or the opening sentence (e.g., "To keep your application for the JPMorganChase position moving forward..."). Prioritize this employer over any testing vendor mentioned in the body.
+        2. JOB TITLE NORMALIZATION FOR ASSESSMENTS:
+        - For assessment/testing emails that use generic or internal program titles (e.g. "JPMorganChase – NAMR Software Engineer Program – Campus Hiring – 2027"), shorten or strip non-essential internal codes/tags so the title simplifies to the core role (e.g., "Software Engineer Program" or "Summer Internship").
+        - This ensures fuzzy-matching logic can match the assessment update to an existing job application row on the candidate's spreadsheet.
+        3. CONTACT INFO & DISCLAIMERS:
+        - `contact_info` must NEVER be a vendor's generic support email (e.g. support@hackerrank.com, support@codesignal.com, etc.). If no direct company/recruiter contact is given, leave `contact_info` blank ("").
+        - Ignore generic legal/compliance disclaimers when determining `type_of_job`. Base `type_of_job` strictly on explicit role wording (e.g. "Internship", "Full-Time").
 
-    DATE FORMATTING RULES:
-    - `date_applied` MUST be formatted as YYYY-MM-DD (e.g., 2026-07-26).
-    - Do not output relative strings like "Today" or text dates like "July 26th". Always format as numerical YYYY-MM-DD.
+        DATE FORMATTING RULES:
+        - `date_applied` MUST be formatted as YYYY-MM-DD (e.g., 2026-08-03).
+        - Do not output relative strings like "Today" or text dates like "July 26th". Always format as numerical YYYY-MM-DD.
 
-    STATUS MAPPING RULES (Map strictly to these exact Google Sheet dropdown string values):
-    - If the email contains a job offer, official offer letter, or congratulations on an offer -> "Offer Received"
-    - If the email confirms you formally accepted the job -> "Accepted"
-    - If the email invites you to complete an online assessment, technical assessment, coding challenge, or coding test (NOT a live interview) -> "OA". This includes emails that mention completing an assessment on CodeSignal, HackerRank, Virtual Job Tryout, HireVue, Pymetrics, Karat, Codility, or similar third-party platforms, even if the email is phrased as a "thank you for applying" or confirmation-style message rather than explicitly saying "assessment."
-    - If the email invites to a live interview, phone screen, or on-site/virtual interview -> "Interview Scheduled"
-    - If the email is a rejection or non-selection notice -> "Rejected"
-    - If the email is an initial application submission confirmation -> "Applied"
-    - Otherwise default to -> "Applied"
+        STATUS MAPPING RULES (Map strictly to these exact Google Sheet dropdown string values):
+        - If the email contains a job offer, official offer letter, or congratulations on an offer -> "Offer Received"
+        - If the email confirms you formally accepted the job -> "Accepted"
+        - If the email invites you to complete an online assessment, technical assessment, coding challenge, or coding test (NOT a live interview) -> "OA". This includes emails that mention completing an assessment on CodeSignal, HackerRank, Virtual Job Tryout, HireVue, Pymetrics, Karat, Codility, or similar third-party platforms, even if the email is phrased as a "thank you for applying" or confirmation-style message rather than explicitly saying "assessment."
+        - If the email invites to a live interview, phone screen, or on-site/virtual interview -> "Interview Scheduled"
+        - If the email is a rejection or non-selection notice -> "Rejected"
+        - If the email is an initial application submission confirmation -> "Applied"
+        - Otherwise default to -> "Applied"
 
-    Email Content:
-    {clean_email_text}
-    """
+        Email Content:
+        {clean_email_text}
+        """
 
     response = client.models.generate_content(
         model='gemini-3.5-flash-lite',
