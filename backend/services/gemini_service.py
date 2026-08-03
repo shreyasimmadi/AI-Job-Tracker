@@ -15,7 +15,11 @@ client = genai.Client()
 # Define the exact blueprint matching your Google Sheet columns
 class JobApplicationData(BaseModel):
     is_job_application: bool = Field(
-        description="Set to TRUE if this email is a legitimate job application confirmation, interview invite, assessment, rejection, status update, or job offer. Set to FALSE for newsletters, marketing, promo emails, or non-job updates."
+        description=(
+            "Set to TRUE for ANY job application confirmation, interview invite, assessment link/invitation "
+            "(e.g., Capital One Virtual Job Tryout, HackerRank, CodeSignal, HireVue), status update, rejection, "
+            "or offer. Set to FALSE ONLY for marketing emails, job alerts, newsletters, or password resets."
+        )
     )
     company_name: str = Field(
         default="", 
@@ -70,7 +74,6 @@ def parse_job_email(clean_email_text: str) -> JobApplicationData:
     prompt = f"""
     Analyze the following email body regarding a candidate's job application, interview, or offer update.
 
-    CLASSIFICATION RULES:
     CLASSIFICATION RULES:
     1. Set `is_job_application` to TRUE if the email is a job application submission confirmation, interview invitation, assessment link, decision update, rejection, OR A JOB OFFER.
     2. Set `is_job_application` to TRUE for ANY email from companies like Capital One, Google, etc. containing assessment invitations, Virtual Job Tryout (VJT) links, CodeSignal, or HackerRank assessments—even if 90% of the text is instructional/FAQ boilerplate.
