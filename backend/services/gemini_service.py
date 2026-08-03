@@ -71,10 +71,12 @@ def parse_job_email(clean_email_text: str) -> JobApplicationData:
     Analyze the following email body regarding a candidate's job application, interview, or offer update.
 
     CLASSIFICATION RULES:
+    CLASSIFICATION RULES:
     1. Set `is_job_application` to TRUE if the email is a job application submission confirmation, interview invitation, assessment link, decision update, rejection, OR A JOB OFFER.
-    2. Set `is_job_application` to FALSE only for marketing, newsletters, general account signups, or non-job emails.
-    3. IMPORTANT: Many assessment-invite emails open with a generic phrase like "Thank you for your interest in [Company]" and then spend most of their length on instructional/FAQ-style content (platform requirements, proctoring rules, browser compatibility, backup network tips, "learn more" links) rather than personalized language. Do NOT classify these as FALSE just because the bulk of the email reads like generic instructions -- if the underlying purpose is inviting the candidate to complete a hiring assessment or next step, it is TRUE regardless of how much boilerplate surrounds it.
-    4. Recognize common third-party hiring assessment platforms as strong signals of a real job application email, even if the email itself never uses the words "job" or "application": CodeSignal, HackerRank, Virtual Job Tryout, HireVue, Pymetrics, Karat, Codility, and similar coding/assessment platforms.
+    2. Set `is_job_application` to TRUE for ANY email from companies like Capital One, Google, etc. containing assessment invitations, Virtual Job Tryout (VJT) links, CodeSignal, or HackerRank assessments—even if 90% of the text is instructional/FAQ boilerplate.
+    3. Set `is_job_application` to FALSE ONLY for purely marketing emails, job alerts/recommendations, weekly newsletters, general account creations, or password resets.
+    4. IMPORTANT: Many assessment-invite emails open with a generic phrase like "Thank you for your interest in [Company]" and then spend most of their length on instructional/FAQ-style content (platform requirements, proctoring rules, browser compatibility, backup network tips, "learn more" links) rather than personalized language. Do NOT classify these as FALSE just because the bulk of the email reads like generic instructions -- if the underlying purpose is inviting the candidate to complete a hiring assessment or next step, it is TRUE regardless of how much boilerplate surrounds it.
+    5. Recognize common third-party hiring assessment platforms as strong signals of a real job application email, even if the email itself never uses the words "job" or "application": CodeSignal, HackerRank, Virtual Job Tryout, HireVue, Pymetrics, Karat, Codility, and similar coding/assessment platforms.
 
     EXTRACTION BOUNDARY RULE (critical -- read carefully):
     The platforms named above (CodeSignal, HackerRank, Virtual Job Tryout, HireVue, Pymetrics, Karat, Codility, etc.) are THIRD-PARTY TESTING VENDORS used to administer an assessment. They are NEVER the hiring company. Regardless of how prominently a testing platform's name appears in the email:
