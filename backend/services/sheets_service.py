@@ -67,7 +67,7 @@ def build_job_hashmap(rows: list) -> tuple[Dict[str, int], Dict[str, List[int]]]
     company_map = {}
 
     for idx, row in enumerate(rows):
-        if not row:
+        if not row or idx == 0:
             continue
             
         row_number = idx + 1  # 1-based index for Google Sheets API
@@ -124,7 +124,7 @@ def update_or_append_job(spreadsheet_id: str, job_data: dict, sheet_name: str = 
         
         # Try to find a row with a matching title
         for row_num in matching_rows:
-            row_title = clean_title(rows[row_num - 1][2])  # Column C (Title)
+            row_title = clean_title(rows[row_num - 1][2]) if len(rows[row_num - 1]) > 2 else ""
             
             # Check if titles overlap or match closely
             if norm_title and (norm_title in row_title or row_title in norm_title):
@@ -179,7 +179,8 @@ def update_or_append_job(spreadsheet_id: str, job_data: dict, sheet_name: str = 
         
         service.spreadsheets().values().append(
             spreadsheetId=spreadsheet_id,
-            range=f"'{sheet_name}'!{COLUMNS['FULL_RANGE']}",
+            range=f"'{sheet_name}'!A:A",
             valueInputOption="USER_ENTERED",
+            insertDataOption="INSERT_ROWS",
             body={"values": [new_row]}
         ).execute()
