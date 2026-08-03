@@ -78,9 +78,10 @@ The background scheduler will run an immediate scan on startup, then repeat ever
       credentials.json     # GCP OAuth client configuration (Git-ignored)
       token.json           # Cached OAuth user tokens (Git-ignored)
     services/
+      auth.py              # Centralized Google OAuth 2.0 service builder (Gmail & Sheets)
       gemini_service.py    # Gemini schema definition & structured extraction
-      gmail_service.py     # Gmail API authentication, email fetching & MIME decoding
-      sheets_service.py    # Google Sheets API client & row updating logic
+      gmail_service.py     # Gmail API email fetching & MIME decoding
+      sheets_service.py    # Google Sheets API client, hashmap lookups & row updating logic
     utilities/
       text_cleaner.py      # HTML stripping & payload cleaning helpers
     .env.example           # Environment template file

@@ -1,12 +1,7 @@
 from typing import Dict, List, Optional
 from googleapiclient.discovery import build
 from services.auth import get_google_service
-
-# Google Sheets API Read/Write Scope
-SCOPES = [
-    'https://www.googleapis.com/auth/gmail.readonly',
-    'https://www.googleapis.com/auth/spreadsheets'
-]
+from utilities.fuzzy_match import clean_company, clean_title
 
 # Sheet Column Mapping Constants
 COLUMNS = {
@@ -50,18 +45,6 @@ def normalize_status(raw_status: str) -> str:
     return VALID_STATUSES.get(clean_val, "Applied")
 
 
-def clean_str(val: str) -> str:
-    """Normalizes string and strips common business entity suffixes for consistent matching."""
-    if not val:
-        return ""
-    
-    cleaned = val.strip().lower()
-    suffixes = [" bio", " inc", " llc", " corp", " corporation", " ltd", " technologies", " technology", " tech"]
-    for suffix in suffixes:
-        cleaned = cleaned.replace(suffix, "")
-    return cleaned.strip()
-
-
 def get_sheets_service():
     """Authenticates and returns the Google Sheets API client service."""
     return get_google_service('sheets', 'v4')
@@ -73,6 +56,12 @@ def build_job_hashmap(rows: list) -> tuple[Dict[str, int], Dict[str, List[int]]]
     Returns:
       - composite_map: 'clean_company|clean_title' -> row_number (1-based index)
       - company_map: 'clean_company' -> list of matching row_numbers
+
+    NOTE: company and title now use separate normalization functions
+    (clean_company / clean_title from utilities.fuzzy_match) instead of a
+    single shared clean_str(). Company names get business-suffix stripping
+    (Inc/LLC/etc); titles just get lowercase + whitespace normalization,
+    since suffix-stripping is a company-name concept, not a title concept.
     """
     composite_map = {}
     company_map = {}
@@ -82,8 +71,8 @@ def build_job_hashmap(rows: list) -> tuple[Dict[str, int], Dict[str, List[int]]]
             continue
             
         row_number = idx + 1  # 1-based index for Google Sheets API
-        company = clean_str(row[0]) if len(row) > 0 else ""
-        title = clean_str(row[2]) if len(row) > 2 else ""
+        company = clean_company(row[0]) if len(row) > 0 else ""
+        title = clean_title(row[2]) if len(row) > 2 else ""
 
         if company:
             # Add to company fallback mapping
@@ -113,8 +102,8 @@ def update_or_append_job(spreadsheet_id: str, job_data: dict, sheet_name: str = 
     raw_company = job_data.get("company_name") or ""
     raw_title = job_data.get("job_title") or ""
     
-    norm_company = clean_str(raw_company)
-    norm_title = clean_str(raw_title)
+    norm_company = clean_company(raw_company)
+    norm_title = clean_title(raw_title)
     status_value = normalize_status(job_data.get("application_status"))
 
     # 2. Build O(1) Lookup Maps
@@ -137,7 +126,7 @@ def update_or_append_job(spreadsheet_id: str, job_data: dict, sheet_name: str = 
         else:
             # Multiple applications at the same company -> match highest title overlap
             for row_num in matching_rows:
-                row_title = clean_str(rows[row_num - 1][2]) if len(rows[row_num - 1]) > 2 else ""
+                row_title = clean_title(rows[row_num - 1][2]) if len(rows[row_num - 1]) > 2 else ""
                 if norm_title and (norm_title in row_title or row_title in norm_title):
                     target_row_number = row_num
                     break
@@ -157,7 +146,7 @@ def update_or_append_job(spreadsheet_id: str, job_data: dict, sheet_name: str = 
             body={"values": [[status_value]]}
         ).execute()
 
-        # NOTE: DATE_APPLIED is intentionally never touched here — it's set once,
+        # NOTE: DATE_APPLIED is intentionally never touched here -- it's set once,
         # at row creation (see append branch below), and preserved after that.
         # email_date reflects "the date THIS email arrived" and always goes into
         # LATEST_EMAIL_UPDATE instead, so a later rejection/interview email can't
@@ -174,7 +163,7 @@ def update_or_append_job(spreadsheet_id: str, job_data: dict, sheet_name: str = 
         print(f"[Sheets Service] ➕ No match found. Appending new application for {raw_company}...")
         
         # This IS a genuine first sighting of this company/title, so email_date
-        # (the actual Gmail timestamp) is a reliable stand-in for "date applied" —
+        # (the actual Gmail timestamp) is a reliable stand-in for "date applied" --
         # more reliable than trusting Gemini's own extracted date_applied field.
         first_seen_date = job_data.get("email_date", "") or job_data.get("date_applied", "")
 
