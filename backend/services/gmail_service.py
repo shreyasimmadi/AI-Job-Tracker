@@ -54,9 +54,11 @@ def decode_payload_data(data: str) -> str:
 
 
 def extract_email_body(message: dict) -> str:
+    def extract_email_body(message: dict) -> str:
     """
     Recursively inspects Gmail payload MIME parts.
-    Prefers 'text/plain' content first to reduce LLM token usage.
+    Prefers 'text/plain' content first to reduce LLM token usage, but cleans all
+    text streams through clean_html() to strip ERB template tags and markup.
     Falls back to cleaned 'text/html' only if plain text is absent,
     and uses message snippet as a last resort.
     """
@@ -81,19 +83,22 @@ def extract_email_body(message: dict) -> str:
 
     walk_parts(payload)
 
-    # 1. Primary choice: Return aggregated plain text
+    # 1. Primary choice: Return cleaned plain text
     full_plain = "\n".join(plain_text_parts).strip()
     if full_plain:
-        return full_plain
+        cleaned_plain = clean_html(full_plain)
+        if cleaned_plain:
+            return cleaned_plain
 
     # 2. Fallback choice: Strip and return HTML text only if no plain text exists
     full_html = "\n".join(html_text_parts).strip()
     if full_html:
-        return clean_html(full_html)
+        cleaned_html = clean_html(full_html)
+        if cleaned_html:
+            return cleaned_html
 
     # 3. Final fallback: Use email snippet
-    return message.get('snippet', '').strip()
-
+    return clean_html(message.get('snippet', '').strip())
 
 def fetch_unread_job_emails(max_results: int = 10) -> List[Dict[str, str]]:
     """
