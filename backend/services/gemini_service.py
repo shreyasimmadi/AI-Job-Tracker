@@ -69,17 +69,24 @@ def parse_job_email(clean_email_text: str) -> JobApplicationData:
     """
     prompt = f"""
     Analyze the following email body regarding a candidate's job application, interview, or offer update.
- 
+
     CLASSIFICATION RULES:
     1. Set `is_job_application` to TRUE if the email is a job application submission confirmation, interview invitation, assessment link, decision update, rejection, OR A JOB OFFER.
     2. Set `is_job_application` to FALSE only for marketing, newsletters, general account signups, or non-job emails.
     3. IMPORTANT: Many assessment-invite emails open with a generic phrase like "Thank you for your interest in [Company]" and then spend most of their length on instructional/FAQ-style content (platform requirements, proctoring rules, browser compatibility, backup network tips, "learn more" links) rather than personalized language. Do NOT classify these as FALSE just because the bulk of the email reads like generic instructions -- if the underlying purpose is inviting the candidate to complete a hiring assessment or next step, it is TRUE regardless of how much boilerplate surrounds it.
     4. Recognize common third-party hiring assessment platforms as strong signals of a real job application email, even if the email itself never uses the words "job" or "application": CodeSignal, HackerRank, Virtual Job Tryout, HireVue, Pymetrics, Karat, Codility, and similar coding/assessment platforms.
- 
+
+    EXTRACTION BOUNDARY RULE (critical -- read carefully):
+    The platforms named above (CodeSignal, HackerRank, Virtual Job Tryout, HireVue, Pymetrics, Karat, Codility, etc.) are THIRD-PARTY TESTING VENDORS used to administer an assessment. They are NEVER the hiring company. Regardless of how prominently a testing platform's name appears in the email:
+    - `company_name` must always be the actual employer/organization the candidate applied to (e.g. "Capital One", "Google") -- NEVER a testing vendor's name, even if the vendor name is mentioned far more often in the email than the employer's name.
+    - `contact_info` must never be a testing vendor's generic support address (e.g. anything ending in @hackerrank.com, @codesignal.com, @myworkday.com support domains, etc.). If no genuine recruiter/company contact is present in the email, leave `contact_info` blank rather than substituting the vendor's support email.
+    - The employer's name is typically mentioned early in the email (often in the greeting or first sentence, e.g. "Thank you for your interest in ... at Capital One!") -- prioritize that over any vendor name mentioned later in the email body.
+    - Ignore generic legal/compliance boilerplate (e.g. AI-usage policies, "termination of employment" warnings, confidentiality notices) when determining `type_of_job`. These are standard disclaimers unrelated to the specific role. Base `type_of_job` only on explicit role-description wording (e.g. "Internship", "Intern", "Summer Analyst", "Full-Time Analyst").
+
     DATE FORMATTING RULES:
     - `date_applied` MUST be formatted as YYYY-MM-DD (e.g., 2026-07-26).
     - Do not output relative strings like "Today" or text dates like "July 26th". Always format as numerical YYYY-MM-DD.
- 
+
     STATUS MAPPING RULES (Map strictly to these exact Google Sheet dropdown string values):
     - If the email contains a job offer, official offer letter, or congratulations on an offer -> "Offer Received"
     - If the email confirms you formally accepted the job -> "Accepted"
@@ -88,7 +95,7 @@ def parse_job_email(clean_email_text: str) -> JobApplicationData:
     - If the email is a rejection or non-selection notice -> "Rejected"
     - If the email is an initial application submission confirmation -> "Applied"
     - Otherwise default to -> "Applied"
- 
+
     Email Content:
     {clean_email_text}
     """
