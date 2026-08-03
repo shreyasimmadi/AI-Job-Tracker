@@ -45,12 +45,12 @@ def decode_payload_data(data: str) -> str:
 
 def extract_email_body(message: dict) -> str:
     """
-    Recursively traverses all payload parts to collect plain text and HTML.
-    Prefers text/plain if substantial (>100 chars), otherwise falls back to text/html.
+    Recursively inspects Gmail payload MIME parts.
+    Collects both plain text and HTML parts, merges them, and cleans 
+    the result to guarantee full body content is never truncated.
     """
     payload = message.get('payload', {})
-    plain_text_parts = []
-    html_text_parts = []
+    extracted_chunks = []
 
     def walk_parts(part: dict):
         if not part:
@@ -63,33 +63,26 @@ def extract_email_body(message: dict) -> str:
         if body_data:
             decoded_text = decode_payload_data(body_data)
             if decoded_text:
-                if mime_type == 'text/plain':
-                    plain_text_parts.append(decoded_text)
-                elif mime_type == 'text/html':
-                    html_text_parts.append(decoded_text)
+                if mime_type in ('text/plain', 'text/html'):
+                    extracted_chunks.append(decoded_text)
 
-        # Recursively walk subparts
+        # Recursively walk subparts (multipart/alternative, multipart/mixed, etc.)
         for subpart in part.get('parts', []):
             walk_parts(subpart)
 
     walk_parts(payload)
 
-    # 1. Clean and check plain text
-    full_plain = "\n".join(plain_text_parts).strip()
-    cleaned_plain = clean_html(full_plain) if full_plain else ""
+    # Combine all decoded chunks into one raw payload
+    combined_raw = "\n".join(extracted_chunks).strip()
+    cleaned_body = clean_html(combined_raw) if combined_raw else ""
 
-    # If plain text exists and isn't just a tiny footer (>100 chars), use it
-    if len(cleaned_plain) > 100:
-        return cleaned_plain
+    # If the combined body is substantial (>150 chars), return it
+    if len(cleaned_body) > 150:
+        return cleaned_body
 
-    # 2. Fallback to HTML text if plain text was missing or truncated
-    full_html = "\n".join(html_text_parts).strip()
-    cleaned_html = clean_html(full_html) if full_html else ""
-    if cleaned_html:
-        return cleaned_html
-
-    # 3. Last resort fallback
-    return cleaned_plain or clean_html(message.get('snippet', '').strip())
+    # Fallback to snippet if body extraction returned under 150 characters
+    snippet_text = clean_html(message.get('snippet', '').strip())
+    return cleaned_body if len(cleaned_body) > len(snippet_text) else snippet_text
 
 
 def fetch_unread_job_emails(max_results: int = 10) -> List[Dict[str, str]]:
