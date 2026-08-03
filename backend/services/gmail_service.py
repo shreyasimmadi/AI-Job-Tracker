@@ -54,7 +54,6 @@ def decode_payload_data(data: str) -> str:
 
 
 def extract_email_body(message: dict) -> str:
-    def extract_email_body(message: dict) -> str:
     """
     Recursively inspects Gmail payload MIME parts.
     Prefers 'text/plain' content first to reduce LLM token usage, but cleans all
