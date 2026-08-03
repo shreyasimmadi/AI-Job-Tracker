@@ -118,18 +118,46 @@ def update_or_append_job(spreadsheet_id: str, job_data: dict, sheet_name: str = 
         print(f"[Sheets Service] 🎯 Exact Composite Match found at Row {target_row_number}.")
     
     # Step 4: Company Fallback Match
-    # Check for existing company rows
-    if norm_company in company_map:
+    elif norm_company in company_map:
         matching_rows = company_map[norm_company]
         
-        # Try to find a row with a matching title
+        is_assessment_invite = (status_value == "OA")
+        incoming_is_hackathon = "hackathon" in norm_title.lower()
+
+        # Exact or Substring Match (Filtering out Hackathons for general OA emails)
         for row_num in matching_rows:
             row_title = clean_title(rows[row_num - 1][2]) if len(rows[row_num - 1]) > 2 else ""
+            row_title_lower = row_title.lower()
             
-            # Check if titles overlap or match closely
-            if norm_title and (norm_title in row_title or row_title in norm_title):
+            # If this is an OA email and the sheet row is a Hackathon, but the assessment title 
+            # doesn't explicitly say "hackathon", SKIP the hackathon row!
+            if is_assessment_invite and "hackathon" in row_title_lower and not incoming_is_hackathon:
+                continue
+
+            if norm_title and (norm_title in row_title_lower or row_title_lower in norm_title):
                 target_row_number = row_num
+                print(f"[Sheets Service] 🎯 Title match found at Row {target_row_number} ({row_title}).")
                 break
+
+        # Main Internship / Full-Time Fallback (for generic assessment titles)
+        if not target_row_number:
+            for row_num in matching_rows:
+                row_title = (clean_title(rows[row_num - 1][2]) if len(rows[row_num - 1]) > 2 else "").lower()
+                
+                # Skip hackathons for general assessment updates
+                if "hackathon" in row_title and not incoming_is_hackathon:
+                    continue
+                    
+                # Prioritize standard internship/analyst roles
+                if any(kw in row_title for kw in ["internship", "intern", "analyst", "full-time"]):
+                    target_row_number = row_num
+                    print(f"[Sheets Service] 🎯 Primary role fallback match found at Row {target_row_number} ({row_title}).")
+                    break
+
+        # Final Fallback: If no primary role found, pick the first available company row
+        if not target_row_number and matching_rows:
+            target_row_number = matching_rows[0]
+            print(f"[Sheets Service] ℹ️ Defaulting to first company row at Row {target_row_number}.")
 
     # Step 5: Update Existing Row or Append New Row
     if target_row_number:
