@@ -118,21 +118,18 @@ def update_or_append_job(spreadsheet_id: str, job_data: dict, sheet_name: str = 
         print(f"[Sheets Service] 🎯 Exact Composite Match found at Row {target_row_number}.")
     
     # Step 4: Company Fallback Match
-    elif norm_company in company_map:
+    # Check for existing company rows
+    if norm_company in company_map:
         matching_rows = company_map[norm_company]
         
-        if len(matching_rows) == 1:
-            target_row_number = matching_rows[0]
-        else:
-            # Multiple applications at the same company -> match highest title overlap
-            for row_num in matching_rows:
-                row_title = clean_title(rows[row_num - 1][2]) if len(rows[row_num - 1]) > 2 else ""
-                if norm_title and (norm_title in row_title or row_title in norm_title):
-                    target_row_number = row_num
-                    break
+        # Try to find a row with a matching title
+        for row_num in matching_rows:
+            row_title = clean_title(rows[row_num - 1][2])  # Column C (Title)
             
-            if not target_row_number:
-                target_row_number = matching_rows[-1]  # Default to most recent row entry
+            # Check if titles overlap or match closely
+            if norm_title and (norm_title in row_title or row_title in norm_title):
+                target_row_number = row_num
+                break
 
     # Step 5: Update Existing Row or Append New Row
     if target_row_number:
