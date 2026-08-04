@@ -1,3 +1,4 @@
+import re
 from typing import Dict, List, Optional
 from googleapiclient.discovery import build
 from services.auth import get_google_service
@@ -56,12 +57,6 @@ def build_job_hashmap(rows: list) -> tuple[Dict[str, int], Dict[str, List[int]]]
     Returns:
       - composite_map: 'clean_company|clean_title' -> row_number (1-based index)
       - company_map: 'clean_company' -> list of matching row_numbers
-
-    NOTE: company and title now use separate normalization functions
-    (clean_company / clean_title from utilities.fuzzy_match) instead of a
-    single shared clean_str(). Company names get business-suffix stripping
-    (Inc/LLC/etc); titles just get lowercase + whitespace normalization,
-    since suffix-stripping is a company-name concept, not a title concept.
     """
     composite_map = {}
     company_map = {}
@@ -91,7 +86,7 @@ def build_job_hashmap(rows: list) -> tuple[Dict[str, int], Dict[str, List[int]]]
 def update_or_append_job(spreadsheet_id: str, job_data: dict, sheet_name: str = "Main"):
     service = get_sheets_service()
     
-    # 1. Fetch current rows from sheet
+    # Fetch current rows from sheet
     range_name = f"'{sheet_name}'!{COLUMNS['FULL_RANGE']}"
     result = service.spreadsheets().values().get(
         spreadsheetId=spreadsheet_id, 
@@ -106,25 +101,32 @@ def update_or_append_job(spreadsheet_id: str, job_data: dict, sheet_name: str = 
     norm_title = clean_title(raw_title)
     status_value = normalize_status(job_data.get("application_status"))
 
-    # 2. Build O(1) Lookup Maps
+    # Build O(1) Lookup Maps
     composite_map, company_map = build_job_hashmap(rows)
     
     composite_key = f"{norm_company}|{norm_title}"
     target_row_number = None
 
-    # Step 3: O(1) Composite Match Check ('company|title')
+    # Composite Match Check ('company|title')
     if composite_key in composite_map:
         target_row_number = composite_map[composite_key]
         print(f"[Sheets Service] 🎯 Exact Composite Match found at Row {target_row_number}.")
     
-    # Step 4: Company Fallback Match
+    # Smart Company Fallback Match
     elif norm_company in company_map:
         matching_rows = company_map[norm_company]
         
         is_assessment_invite = (status_value == "OA")
         incoming_is_hackathon = "hackathon" in norm_title.lower()
 
-        # Exact or Substring Match (Filtering out Hackathons for general OA emails)
+        # Extract meaningful tokens from incoming title (ignoring generic stop words)
+        stop_words = {"for", "and", "the", "in", "of", "to", "at", "opportunities", "university", "students", "program", "role"}
+        incoming_tokens = set(re.findall(r'\b[a-z0-9]+\b', norm_title.lower())) - stop_words
+
+        best_overlap_score = 0
+        best_matching_row = None
+
+        # Substring or Token Overlap Search
         for row_num in matching_rows:
             row_title = clean_title(rows[row_num - 1][2]) if len(rows[row_num - 1]) > 2 else ""
             row_title_lower = row_title.lower()
@@ -134,30 +136,35 @@ def update_or_append_job(spreadsheet_id: str, job_data: dict, sheet_name: str = 
             if is_assessment_invite and "hackathon" in row_title_lower and not incoming_is_hackathon:
                 continue
 
+            # Direct Substring Match
             if norm_title and (norm_title in row_title_lower or row_title_lower in norm_title):
                 target_row_number = row_num
-                print(f"[Sheets Service] 🎯 Title match found at Row {target_row_number} ({row_title}).")
+                print(f"[Sheets Service] 🎯 Substring title match found at Row {target_row_number} ({row_title}).")
                 break
 
-        # Main Internship / Full-Time Fallback (for generic assessment titles)
-        if not target_row_number:
-            for row_num in matching_rows:
-                row_title = (clean_title(rows[row_num - 1][2]) if len(rows[row_num - 1]) > 2 else "").lower()
-                
-                # Skip hackathons for general assessment updates
-                if "hackathon" in row_title and not incoming_is_hackathon:
-                    continue
-                    
-                # Prioritize standard internship/analyst roles
-                if any(kw in row_title for kw in ["internship", "intern", "analyst", "full-time"]):
-                    target_row_number = row_num
-                    print(f"[Sheets Service] 🎯 Primary role fallback match found at Row {target_row_number} ({row_title}).")
-                    break
+            # Token Overlap Score Calculation
+            row_tokens = set(re.findall(r'\b[a-z0-9]+\b', row_title_lower)) - stop_words
+            overlap = incoming_tokens.intersection(row_tokens)
+            overlap_score = len(overlap)
 
-        # Final Fallback: If no primary role found, pick the first available company row
-        if not target_row_number and matching_rows:
-            target_row_number = matching_rows[0]
-            print(f"[Sheets Service] ℹ️ Defaulting to first company row at Row {target_row_number}.")
+            # Keep track of the row with highest keyword overlap (must share at least 2 distinct key terms)
+            if overlap_score > best_overlap_score and overlap_score >= 2:
+                best_overlap_score = overlap_score
+                best_matching_row = row_num
+
+        # Apply token match if no substring match was triggered
+        if not target_row_number and best_matching_row:
+            target_row_number = best_matching_row
+            print(f"[Sheets Service] 🎯 Token overlap match found at Row {target_row_number} (Overlap Score: {best_overlap_score}).")
+
+        # If you applied to multiple roles at this company and keywords don't match, target_row_number stays None
+        # so it safely appends a new application row instead of overwriting a different role!
+        if not target_row_number and len(matching_rows) == 1:
+            single_row_num = matching_rows[0]
+            row_title = clean_title(rows[single_row_num - 1][2]) if len(rows[single_row_num - 1]) > 2 else ""
+            if not ("hackathon" in row_title.lower() and not incoming_is_hackathon):
+                target_row_number = single_row_num
+                print(f"[Sheets Service] ℹ️ Single company application fallback at Row {target_row_number}.")
 
     # Step 5: Update Existing Row or Append New Row
     if target_row_number:
@@ -171,11 +178,6 @@ def update_or_append_job(spreadsheet_id: str, job_data: dict, sheet_name: str = 
             body={"values": [[status_value]]}
         ).execute()
 
-        # NOTE: DATE_APPLIED is intentionally never touched here -- it's set once,
-        # at row creation (see append branch below), and preserved after that.
-        # email_date reflects "the date THIS email arrived" and always goes into
-        # LATEST_EMAIL_UPDATE instead, so a later rejection/interview email can't
-        # silently overwrite the original application date.
         if job_data.get("email_date"):
             update_range = f"'{sheet_name}'!{COLUMNS['LATEST_EMAIL_UPDATE']}{target_row_number}"
             service.spreadsheets().values().update(
@@ -187,9 +189,6 @@ def update_or_append_job(spreadsheet_id: str, job_data: dict, sheet_name: str = 
     else:
         print(f"[Sheets Service] ➕ No match found. Appending new application for {raw_company}...")
         
-        # This IS a genuine first sighting of this company/title, so email_date
-        # (the actual Gmail timestamp) is a reliable stand-in for "date applied" --
-        # more reliable than trusting Gemini's own extracted date_applied field.
         first_seen_date = job_data.get("email_date", "") or job_data.get("date_applied", "")
 
         new_row = [
